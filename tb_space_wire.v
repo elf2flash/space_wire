@@ -621,7 +621,4 @@ space_wire                    inst1_space_wire
   .o_stat_info_7              ( sw1_o_stat_info_7           )
 );
 //------------------------------------------------------------------------------
-//---
-//---
-//---
-endmodule // module space_wire_time_code_control
+endmodule // module tb_space_wire

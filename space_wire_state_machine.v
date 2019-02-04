@@ -202,7 +202,7 @@ always @(posedge i_clk or negedge i_reset_n or posedge i_credit_error)
               end
             if ( fifo_available_z1 )
               begin
-                //timer_6p4_us_reset     <= 1'b0;   //???????
+                timer_6p4_us_reset     <= 1'b0;   //???????
               end
             timer_6p4_us_reset         <= 1'b0;
             space_wire_reset_n_out     <= 1'b0;
