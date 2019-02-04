@@ -5,26 +5,36 @@ module tb_space_wire
 (
 );
 //------------------------------------------------------------------------------
-localparam  [31:0]   C_PAUSE_RST_0        = 100;
-localparam  [31:0]   C_PAUSE_RST_1        = 150;
-localparam  [31:0]   C_PAUSE_AFTER_RST_0  = 10;
-localparam  [31:0]   C_PAUSE_AFTER_RST_1  = 17;
-localparam  [31:0]   C_TICK_IN_CNT_VAL_0  = 530;
-localparam  [31:0]   C_TICK_IN_CNT_VAL_1  = 678;
-localparam  [5:0]    C_TX_CLK_DIVIDE_VAL  = 6'b001001;
-//---
-localparam  [31:0]   C_PAUSE_DATA_SEND_0  = 4918;
-localparam  [31:0]   C_PAUSE_DATA_SEND_1  = 6154;
-localparam  [31:0]   C_DATA_SEND_COUNT_0  = 23;
-localparam  [31:0]   C_DATA_SEND_COUNT_1  = 45;
+// Duration of reset after start simulation in cycles of system clock
+localparam  [31:0]   C_PAUSE_RST_0         = 100;
+localparam  [31:0]   C_PAUSE_RST_1         = 150;
+// Start time of second reset
+localparam  [31:0]   C_START_SECOND_RST_0  = 80000;
+localparam  [31:0]   C_START_SECOND_RST_1  = 55500;
+// Duration of second reset
+localparam  [31:0]   C_PAUSE_SECOND_RST_0  = 1000;
+localparam  [31:0]   C_PAUSE_SECOND_RST_1  = 1500;
+// Pause of link start after any reset
+localparam  [31:0]   C_PAUSE_AFTER_RST_0   = 10;
+localparam  [31:0]   C_PAUSE_AFTER_RST_1   = 17;
+// Period of tickIn signal (in cycles of system clock)
+localparam  [31:0]   C_TICK_IN_CNT_VAL_0   = 530;
+localparam  [31:0]   C_TICK_IN_CNT_VAL_1   = 678;
+localparam  [5:0]    C_TX_CLK_DIVIDE_VAL   = 6'b001001;
+// Pause between packs
+localparam  [31:0]   C_PAUSE_DATA_SEND_0   = 4918;
+localparam  [31:0]   C_PAUSE_DATA_SEND_1   = 6154;
+// Number of data words in a pack (it is not a Spice Wire Packet!)
+localparam  [31:0]   C_DATA_SEND_COUNT_0   = 23;
+localparam  [31:0]   C_DATA_SEND_COUNT_1   = 45;
 //------------------------------------------------------------------------------
-reg                  sw0_i_reset;
-reg                  sw0_i_tx_fifo_wr_en;
+reg                  sw0_i_reset_n;
+reg                  sw0_i_tx_fifo_wren;
 reg     [8:0]        sw0_i_tx_fifo_data_in;
 wire                 sw0_o_tx_fifo_full;
-wire    [5:0]        sw0_o_tx_fifo_data_count;
-reg                  sw0_i_rx_fifo_rd_en;
-wire    [8:0]        sw0_o_rx_fifo_data_out;
+wire    [5:0]        sw0_o_tx_fifo_rdusdw;
+reg                  sw0_i_rx_fifo_rden;
+wire    [8:0]        sw0_o_rx_fifo_q;
 wire                 sw0_o_rx_fifo_full;
 wire                 sw0_o_rx_fifo_empty;
 wire    [5:0]        sw0_o_rx_fifo_data_count;
@@ -46,8 +56,8 @@ wire                 sw0_o_tx_activity;
 wire                 sw0_o_rx_activity;
 wire                 sw0_o_space_wire_data_out;
 wire                 sw0_o_space_wire_strobe_out;
-reg                  sw0_o_space_wire_data_in;
-reg                  sw0_o_space_wire_strobe_in;
+reg                  sw0_i_space_wire_data_in;
+reg                  sw0_i_space_wire_strobe_in;
 reg                  sw0_i_stat_info_clear;
 wire    [7:0]        sw0_o_stat_info_0;
 wire    [7:0]        sw0_o_stat_info_1;
@@ -58,13 +68,13 @@ wire    [7:0]        sw0_o_stat_info_5;
 wire    [7:0]        sw0_o_stat_info_6;
 wire    [7:0]        sw0_o_stat_info_7;
 //------------------------------------------------------------------------------
-reg                  sw1_i_reset;
-reg                  sw1_i_tx_fifo_wr_en;
+reg                  sw1_i_reset_n;
+reg                  sw1_i_tx_fifo_wren;
 reg     [8:0]        sw1_i_tx_fifo_data_in;
 wire                 sw1_o_tx_fifo_full;
-wire    [5:0]        sw1_o_tx_fifo_data_count;
-reg                  sw1_i_rx_fifo_rd_en;
-wire    [8:0]        sw1_o_rx_fifo_data_out;
+wire    [5:0]        sw1_o_tx_fifo_rdusdw;
+reg                  sw1_i_rx_fifo_rden;
+wire    [8:0]        sw1_o_rx_fifo_q;
 wire                 sw1_o_rx_fifo_full;
 wire                 sw1_o_rx_fifo_empty;
 wire    [5:0]        sw1_o_rx_fifo_data_count;
@@ -86,8 +96,8 @@ wire                 sw1_o_tx_activity;
 wire                 sw1_o_rx_activity;
 wire                 sw1_o_space_wire_data_out;
 wire                 sw1_o_space_wire_strobe_out;
-reg                  sw1_o_space_wire_data_in;
-reg                  sw1_o_space_wire_strobe_in;
+reg                  sw1_i_space_wire_data_in;
+reg                  sw1_i_space_wire_strobe_in;
 reg                  sw1_i_stat_info_clear;
 wire    [7:0]        sw1_o_stat_info_0;
 wire    [7:0]        sw1_o_stat_info_1;
@@ -100,10 +110,10 @@ wire    [7:0]        sw1_o_stat_info_7;
 //------------------------------------------------------------------------------
 initial
   begin
-    sw0_i_reset              = 1'b1;
-    sw0_i_tx_fifo_wr_en      = 1'b0;
-    sw0_i_tx_fifo_data_in    = 8'b00000000;
-    sw0_i_rx_fifo_rd_en      = 1'b0;
+    sw0_i_reset_n            = 1'b0;
+    sw0_i_tx_fifo_wren       = 1'b0;
+    sw0_i_tx_fifo_data_in    = 9'b00000000;
+    sw0_i_rx_fifo_rden       = 1'b0;
     sw0_i_tick_in            = 1'b0;
     sw0_i_time_in            = 6'b000000;
     sw0_i_control_flags_in   = 2'b00;
@@ -113,10 +123,10 @@ initial
     sw0_i_tx_clk_divide_val  = C_TX_CLK_DIVIDE_VAL;
     sw0_i_stat_info_clear    = 1'b0;
     //---
-    sw1_i_reset              = 1'b1;
-    sw1_i_tx_fifo_wr_en      = 1'b0;
-    sw1_i_tx_fifo_data_in    = 8'b00000000;
-    sw1_i_rx_fifo_rd_en      = 1'b0;
+    sw1_i_reset_n            = 1'b0;
+    sw1_i_tx_fifo_wren       = 1'b0;
+    sw1_i_tx_fifo_data_in    = 9'b00000000;
+    sw1_i_rx_fifo_rden       = 1'b0;
     sw1_i_tick_in            = 1'b0;
     sw1_i_time_in            = 6'b000000;
     sw1_i_control_flags_in   = 2'b00;
@@ -127,9 +137,12 @@ initial
     sw1_i_stat_info_clear    = 1'b0;
   end
 //------------------------------------------------------------------------------
-reg                  clk_100;
-reg                  clk_50;
-reg                  clk_166;
+reg                  clk_100_0;
+reg                  clk_50_0;
+reg                  clk_166_0;
+reg                  clk_100_1;
+reg                  clk_50_1;
+reg                  clk_166_1;
 wire                 clock_system_0;
 wire                 clock_system_1;
 wire                 tx_clk_0;
@@ -151,31 +164,39 @@ reg     [3:0]        state_data_send_1;
 reg     [3:0]        state_rd_data_0;
 reg     [3:0]        state_rd_data_1;
 //------------------------------------------------------------------------------
-initial  clk_100  = 0;
-initial  clk_50   = 0;
-initial  clk_166  = 0;
+initial  clk_100_0  = 0;
+initial  clk_50_0   = 0;
+initial  clk_166_0  = 0;
+initial  clk_100_1  = 0;
+initial  clk_50_1   = 0;
+initial  clk_166_1  = 0;
 // 100 MHz
-always  #5000  clk_100 = ~clk_100;
+always  #5000  clk_100_0 = ~clk_100_0;
 //  50 MHz
-always #10000  clk_50 = ~clk_50;
+always #10000  clk_50_0  = ~clk_50_0;
 // 166 MHz
-always  #3000  clk_166 = ~clk_166;
+always  #3000  clk_166_0 = ~clk_166_0;
+// 100 MHz
+always  #5200  clk_100_1 = ~clk_100_1;
+//  50 MHz
+always #10200  clk_50_1  = ~clk_50_1;
+// 166 MHz
+always  #3200  clk_166_1 = ~clk_166_1;
 //------------------------------------------------------------------------------
-assign  clock_system_0  = clk_50;
-assign  clock_system_1  = clk_50;
-assign  tx_clk_0        = clk_100;
-assign  tx_clk_1        = clk_100;
-assign  rx_clk_0        = clk_166;
-assign  rx_clk_1        = clk_166;
-//------------------------------------------------------------------------------
+assign  clock_system_0  = clk_50_0;
+assign  clock_system_1  = clk_50_1;
+assign  tx_clk_0        = clk_100_0;
+assign  tx_clk_1        = clk_100_1;
+assign  rx_clk_0        = clk_166_0;
+assign  rx_clk_1        = clk_166_1;
 //------------------------------------------------------------------------------
 always @(posedge clock_system_1)
   begin : s_ds_z
-    sw1_o_space_wire_data_in      <= sw0_o_space_wire_data_out;
-    sw1_o_space_wire_strobe_in    <= sw0_o_space_wire_strobe_out;
+    sw1_i_space_wire_data_in      <= sw0_o_space_wire_data_out;
+    sw1_i_space_wire_strobe_in    <= sw0_o_space_wire_strobe_out;
     //---
-    sw0_o_space_wire_data_in      <= sw1_o_space_wire_data_out;
-    sw0_o_space_wire_strobe_in    <= sw1_o_space_wire_strobe_out;
+    sw0_i_space_wire_data_in      <= sw1_o_space_wire_data_out;
+    sw0_i_space_wire_strobe_in    <= sw1_o_space_wire_strobe_out;
   end
 //==============================================================================
 // Reset simulation.
@@ -187,11 +208,21 @@ always @(posedge clock_system_0)
     clock_system_rst_cnt_0        <= clock_system_rst_cnt_0 + 1;
     if ( clock_system_rst_cnt_0 < C_PAUSE_RST_0 )
       begin
-        sw0_i_reset							<= 1'b1;
+        sw0_i_reset_n							<= 1'b0;
+      end
+    else if ( clock_system_rst_cnt_0 >= C_PAUSE_RST_0 & 
+              clock_system_rst_cnt_0 < C_START_SECOND_RST_0)
+      begin
+        sw0_i_reset_n							<= 1'b1;
+      end
+    else if ( clock_system_rst_cnt_0 >= C_START_SECOND_RST_0 & 
+           clock_system_rst_cnt_0 < C_START_SECOND_RST_0 + C_PAUSE_SECOND_RST_0)
+      begin
+        sw0_i_reset_n							<= 1'b0;
       end
     else
       begin
-        sw0_i_reset							<= 1'b0;
+        sw0_i_reset_n							<= 1'b1;
       end
   end
 //------------------------------------------------------------------------------
@@ -202,11 +233,21 @@ always @(posedge clock_system_1)
     clock_system_rst_cnt_1        <= clock_system_rst_cnt_1 + 1;
     if ( clock_system_rst_cnt_1 < C_PAUSE_RST_1 )
       begin
-        sw1_i_reset							<= 1'b1;
+        sw1_i_reset_n							<= 1'b0;
+      end
+    else if ( clock_system_rst_cnt_1 >= C_PAUSE_RST_1 & 
+              clock_system_rst_cnt_1 < C_START_SECOND_RST_1)
+      begin
+        sw1_i_reset_n							<= 1'b1;
+      end
+    else if ( clock_system_rst_cnt_1 >= C_START_SECOND_RST_1 & 
+           clock_system_rst_cnt_1 < C_START_SECOND_RST_1 + C_PAUSE_SECOND_RST_1)
+      begin
+        sw1_i_reset_n							<= 1'b0;
       end
     else
       begin
-        sw1_i_reset							<= 1'b0;
+        sw1_i_reset_n							<= 1'b1;
       end
   end
 //------------------------------------------------------------------------------
@@ -228,7 +269,7 @@ always @(posedge clock_system_0)
       begin
         sw0_i_link_start                <= 1'b0;
         sw0_i_auto_start                <= 1'b0;
-        if ( !sw0_i_reset )
+        if ( sw0_i_reset_n )
           begin
             link_state_tb_0             <= 4'h1;
           end
@@ -249,7 +290,7 @@ always @(posedge clock_system_0)
       begin
         sw0_i_link_start                <= 1'b1;
         sw0_i_auto_start                <= 1'b1;
-        if ( sw0_i_reset )
+        if ( !sw0_i_reset_n )
           begin
             link_state_tb_0             <= 4'h0;
           end
@@ -268,7 +309,7 @@ always @(posedge clock_system_1)
       begin
         sw1_i_link_start                <= 1'b0;
         sw1_i_auto_start                <= 1'b0;
-        if ( !sw1_i_reset )
+        if ( sw1_i_reset_n )
           begin
             link_state_tb_1             <= 4'h1;
           end
@@ -289,7 +330,7 @@ always @(posedge clock_system_1)
       begin
         sw1_i_link_start                <= 1'b1;
         sw1_i_auto_start                <= 1'b1;
-        if ( sw1_i_reset )
+        if ( !sw1_i_reset_n )
           begin
             link_state_tb_1             <= 4'h0;
           end
@@ -308,7 +349,7 @@ initial sw0_i_time_in              = 6'b000000;
 always @(posedge tx_clk_0)
   begin : s_tick_in_0
     sw0_i_tick_in                 <= 1'b0;
-    if ( sw0_i_reset )
+    if ( !sw0_i_reset_n )
       begin
         tick_in_cnt_0             <= 1'b0;
         sw0_i_time_in             <= 6'b000000;
@@ -331,7 +372,7 @@ initial sw1_i_time_in              = 6'b000000;
 always @(posedge tx_clk_1)
   begin : s_tick_in_1
     sw1_i_tick_in                 <= 1'b0;
-    if ( sw1_i_reset )
+    if ( !sw1_i_reset_n )
       begin
         tick_in_cnt_1             <= 1'b0;
         sw1_i_time_in             <= 6'b000000;
@@ -354,34 +395,40 @@ always @(posedge tx_clk_1)
 //==============================================================================
 // Data send simulation.
 //==============================================================================
-initial data_send_cnt_0              = 32'h00000000;
-initial state_data_send_0            = 4'h0;
+initial data_send_cnt_0             = 32'h00000000;
+initial state_data_send_0           = 4'h0;
 //---
 always @(posedge clock_system_0)
   begin : s_data_send_0
-    sw0_i_tx_fifo_wr_en             <= 1'b0;
+    sw0_i_tx_fifo_wren              <= 1'b0;
     if ( state_data_send_0 == 4'h0 )
       begin
         // sw0_o_link_status[0] - EnableTransmit
         if ( sw0_o_link_status[0] )
           begin
-            data_send_cnt_0           <= data_send_cnt_0 + 1;
+            data_send_cnt_0         <= data_send_cnt_0 + 1;
             if ( data_send_cnt_0 > C_PAUSE_DATA_SEND_0 )
               begin
-                data_send_cnt_0       <= 32'h00000000;
-                state_data_send_0     <= 4'h1;
+                data_send_cnt_0     <= 32'h00000000;
+                state_data_send_0   <= 4'h1;
               end
           end
       end
     else if ( state_data_send_0 == 4'h1 )
       begin
-        if ( !sw0_o_tx_fifo_full & sw0_o_link_status[0] & data_send_cnt_0 < C_DATA_SEND_COUNT_0 )
+        if ( !sw0_o_tx_fifo_full & sw0_o_link_status[0] & 
+             data_send_cnt_0 < C_DATA_SEND_COUNT_0 )
           begin
             data_send_cnt_0         <= data_send_cnt_0 + 1;
-            sw0_i_tx_fifo_wr_en     <= 1'b1;
+            sw0_i_tx_fifo_wren      <= 1'b1;
             sw0_i_tx_fifo_data_in   <= sw0_i_tx_fifo_data_in + 1;
+            if (sw0_i_tx_fifo_data_in == 256)
+              begin
+                sw0_i_tx_fifo_data_in <= 9'b00000000;
+              end
           end
-        else if ( !sw0_o_link_status[0] | data_send_cnt_0 == C_DATA_SEND_COUNT_0 )
+        else if ( !sw0_o_link_status[0] | 
+                  data_send_cnt_0 == C_DATA_SEND_COUNT_0 )
           begin
             data_send_cnt_0         <= 32'h00000000;
             state_data_send_0       <= 4'h0;
@@ -389,34 +436,40 @@ always @(posedge clock_system_0)
       end
   end
 //------------------------------------------------------------------------------
-initial data_send_cnt_1              = 32'h00000000;
-initial state_data_send_1            = 4'h0;
+initial data_send_cnt_1             = 32'h00000000;
+initial state_data_send_1           = 4'h0;
 //---
 always @(posedge clock_system_1)
   begin : s_data_send_1
-    sw1_i_tx_fifo_wr_en             <= 1'b0;
+    sw1_i_tx_fifo_wren              <= 1'b0;
     if ( state_data_send_1 == 4'h0 )
       begin
         // sw1_o_link_status[0] - EnableTransmit
         if ( sw1_o_link_status[0] )
           begin
-            data_send_cnt_1           <= data_send_cnt_1 + 1;
+            data_send_cnt_1         <= data_send_cnt_1 + 1;
             if ( data_send_cnt_1 > C_PAUSE_DATA_SEND_1 )
               begin
-                data_send_cnt_1       <= 32'h00000000;
-                state_data_send_1     <= 4'h1;
+                data_send_cnt_1     <= 32'h00000000;
+                state_data_send_1   <= 4'h1;
               end
           end
       end
     else if ( state_data_send_1 == 4'h1 )
       begin
-        if ( !sw1_o_tx_fifo_full & sw1_o_link_status[0] & data_send_cnt_1 < C_DATA_SEND_COUNT_1 )
+        if ( !sw1_o_tx_fifo_full & sw1_o_link_status[0] & 
+             data_send_cnt_1 < C_DATA_SEND_COUNT_1 )
           begin
             data_send_cnt_1         <= data_send_cnt_1 + 1;
-            sw1_i_tx_fifo_wr_en     <= 1'b1;
+            sw1_i_tx_fifo_wren      <= 1'b1;
             sw1_i_tx_fifo_data_in   <= sw1_i_tx_fifo_data_in + 1;
+            if (sw1_i_tx_fifo_data_in == 256)
+              begin
+                sw1_i_tx_fifo_data_in <= 9'b00000000;
+              end
           end
-        else if ( !sw1_o_link_status[0] | data_send_cnt_1 == C_DATA_SEND_COUNT_1 )
+        else if ( !sw1_o_link_status[0] | 
+                  data_send_cnt_1 == C_DATA_SEND_COUNT_1 )
           begin
             data_send_cnt_1         <= 32'h00000000;
             state_data_send_1       <= 4'h0;
@@ -430,12 +483,12 @@ initial state_rd_data_0 = 4'h0;
 //---
 always @(posedge clock_system_0)
   begin : s_data_rd_0
-    sw0_i_rx_fifo_rd_en             <= 1'b0;
+    sw0_i_rx_fifo_rden              <= 1'b0;
     if ( state_rd_data_0 == 4'h0 )
       begin
         if ( !sw0_o_rx_fifo_empty )
           begin
-            sw0_i_rx_fifo_rd_en     <= 1'b1;
+            sw0_i_rx_fifo_rden      <= 1'b1;
             state_rd_data_0         <= 4'h1;
           end
       end
@@ -453,12 +506,12 @@ initial state_rd_data_1 = 4'h0;
 //---
 always @(posedge clock_system_1)
   begin : s_data_rd_1
-    sw1_i_rx_fifo_rd_en             <= 1'b0;
+    sw1_i_rx_fifo_rden              <= 1'b0;
     if ( state_rd_data_1 == 4'h0 )
       begin
         if ( !sw1_o_rx_fifo_empty )
           begin
-            sw1_i_rx_fifo_rd_en     <= 1'b1;
+            sw1_i_rx_fifo_rden      <= 1'b1;
             state_rd_data_1         <= 4'h1;
           end
       end
@@ -481,13 +534,13 @@ space_wire                    inst0_space_wire
   .i_clk                      ( clock_system_0              ),
   .i_tx_clk                   ( tx_clk_0                    ),
   .i_rx_clk                   ( rx_clk_0                    ),
-  .i_reset                    ( sw0_i_reset                 ),
-  .i_tx_fifo_wr_en            ( sw0_i_tx_fifo_wr_en         ),
+  .i_reset_n                  ( sw0_i_reset_n               ),
+  .i_tx_fifo_wren             ( sw0_i_tx_fifo_wren          ),
   .i_tx_fifo_data_in          ( sw0_i_tx_fifo_data_in       ),
   .o_tx_fifo_full             ( sw0_o_tx_fifo_full          ),
-  .o_tx_fifo_data_count       ( sw0_o_tx_fifo_data_count    ),
-  .i_rx_fifo_rd_en            ( sw0_i_rx_fifo_rd_en         ),
-  .o_rx_fifo_data_out         ( sw0_o_rx_fifo_data_out      ),
+  .o_tx_fifo_rdusdw           ( sw0_o_tx_fifo_rdusdw        ),
+  .i_rx_fifo_rden             ( sw0_i_rx_fifo_rden          ),
+  .o_rx_fifo_q                ( sw0_o_rx_fifo_q             ),
   .o_rx_fifo_full             ( sw0_o_rx_fifo_full          ),
   .o_rx_fifo_empty            ( sw0_o_rx_fifo_empty         ),
   .o_rx_fifo_data_count       ( sw0_o_rx_fifo_data_count    ),
@@ -509,8 +562,8 @@ space_wire                    inst0_space_wire
   .o_rx_activity              ( sw0_o_rx_activity           ),
   .o_space_wire_data_out      ( sw0_o_space_wire_data_out   ),
   .o_space_wire_strobe_out    ( sw0_o_space_wire_strobe_out ),
-  .o_space_wire_data_in       ( sw0_o_space_wire_data_in    ),
-  .o_space_wire_strobe_in     ( sw0_o_space_wire_strobe_in  ),
+  .i_space_wire_data_in       ( sw0_i_space_wire_data_in    ),
+  .i_space_wire_strobe_in     ( sw0_i_space_wire_strobe_in  ),
   .i_stat_info_clear          ( sw0_i_stat_info_clear       ),
   .o_stat_info_0              ( sw0_o_stat_info_0           ),
   .o_stat_info_1              ( sw0_o_stat_info_1           ),
@@ -527,13 +580,13 @@ space_wire                    inst1_space_wire
   .i_clk                      ( clock_system_1              ),
   .i_tx_clk                   ( tx_clk_1                    ),
   .i_rx_clk                   ( rx_clk_1                    ),
-  .i_reset                    ( sw1_i_reset                 ),
-  .i_tx_fifo_wr_en            ( sw1_i_tx_fifo_wr_en         ),
+  .i_reset_n                  ( sw1_i_reset_n               ),
+  .i_tx_fifo_wren             ( sw1_i_tx_fifo_wren          ),
   .i_tx_fifo_data_in          ( sw1_i_tx_fifo_data_in       ),
   .o_tx_fifo_full             ( sw1_o_tx_fifo_full          ),
-  .o_tx_fifo_data_count       ( sw1_o_tx_fifo_data_count    ),
-  .i_rx_fifo_rd_en            ( sw1_i_rx_fifo_rd_en         ),
-  .o_rx_fifo_data_out         ( sw1_o_rx_fifo_data_out      ),
+  .o_tx_fifo_rdusdw           ( sw1_o_tx_fifo_rdusdw        ),
+  .i_rx_fifo_rden             ( sw1_i_rx_fifo_rden          ),
+  .o_rx_fifo_q                ( sw1_o_rx_fifo_q             ),
   .o_rx_fifo_full             ( sw1_o_rx_fifo_full          ),
   .o_rx_fifo_empty            ( sw1_o_rx_fifo_empty         ),
   .o_rx_fifo_data_count       ( sw1_o_rx_fifo_data_count    ),
@@ -555,8 +608,8 @@ space_wire                    inst1_space_wire
   .o_rx_activity              ( sw1_o_rx_activity           ),
   .o_space_wire_data_out      ( sw1_o_space_wire_data_out   ),
   .o_space_wire_strobe_out    ( sw1_o_space_wire_strobe_out ),
-  .o_space_wire_data_in       ( sw1_o_space_wire_data_in    ),
-  .o_space_wire_strobe_in     ( sw1_o_space_wire_strobe_in  ),
+  .i_space_wire_data_in       ( sw1_i_space_wire_data_in    ),
+  .i_space_wire_strobe_in     ( sw1_i_space_wire_strobe_in  ),
   .i_stat_info_clear          ( sw1_i_stat_info_clear       ),
   .o_stat_info_0              ( sw1_o_stat_info_0           ),
   .o_stat_info_1              ( sw1_o_stat_info_1           ),

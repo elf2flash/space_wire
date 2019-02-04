@@ -3,14 +3,18 @@
 //------------------------------------------------------------------------------
 module space_wire_timer 
 #(
-  parameter    C_TIMER_6_4_US_VAL    = 640,
+  parameter    C_TIMER_6_4_US_VAL    = 320,
   parameter    C_TIMER_12_8_US_VAL   = 1280
 )
 (
   input    wire                 i_clk,
-  input    wire                 i_reset,
+  input    wire                 i_reset_n,
+  // From Space Wire State Machine
+  // [i_clk] 
   input    wire                 i_timer_6p4_us_reset,
   input    wire                 i_timer_12p8_us_start,
+  // To Space Wire State Machine
+  // [i_clk]
   output   wire                 o_after_6p4_us,
   output   wire                 o_after_12p8_us
 );
@@ -38,24 +42,33 @@ assign o_after_12p8_us  = after_12p8_us;
 //==============================================================================
 // After 6.4us.
 //==============================================================================
-always @(posedge i_clk or posedge i_reset or posedge i_timer_6p4_us_reset)
+always @(posedge i_clk or negedge i_reset_n or posedge i_timer_6p4_us_reset)
   begin : s_control_timer64
-    if ( i_reset | i_timer_6p4_us_reset )
+    if ( !i_reset_n | i_timer_6p4_us_reset )
       begin
         timer_count_6p4_us       <= {10{1'b0}};
         after_6p4_us             <= 1'b0;
       end
     else
       begin
+        // If i_clk = 50MHz,
+        // then T_clk = 20ns,
+        // if C_TIMER_6_4_US_VAL = 320,
+        // then 320*20 = 6.4us
         if ( timer_count_6p4_us < C_TIMER_6_4_US_VAL )
           begin
-           timer_count_6p4_us    <= timer_count_6p4_us + 1;
-           after_6p4_us          <= 1'b0;
+            timer_count_6p4_us   <= timer_count_6p4_us + 1;
+            after_6p4_us         <= 1'b0;
+          end
+        else if ( timer_count_6p4_us == C_TIMER_6_4_US_VAL )
+          begin
+            timer_count_6p4_us   <= timer_count_6p4_us + 1;
+            // after_6p4_us - it should be an impulse
+            after_6p4_us         <= 1'b1;
           end
         else
           begin
-            timer_count_6p4_us    <= {10{1'b0}};
-            after_6p4_us          <= 1'b1;
+            after_6p4_us         <= 1'b0;
           end
       end
   end
@@ -66,9 +79,9 @@ always @(posedge i_clk or posedge i_reset or posedge i_timer_6p4_us_reset)
 //==============================================================================
 // After 12.8us.
 //==============================================================================
-always @(posedge i_clk or posedge i_reset or posedge i_timer_12p8_us_start or posedge i_timer_6p4_us_reset)
+always @(posedge i_clk or negedge i_reset_n or posedge i_timer_6p4_us_reset)
   begin : s_control_timer128
-    if ( i_reset | i_timer_6p4_us_reset )
+    if ( !i_reset_n | i_timer_6p4_us_reset )
       begin
         timer_state_12p8_us          <= 1'b0;
         timer_count_12p8_us          <= {11{1'b0}};

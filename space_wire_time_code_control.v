@@ -4,12 +4,12 @@
 module space_wire_time_code_control
 (
   input    wire                 i_clk,
-  input    wire                 i_reset,
+  input    wire                 i_reset_n,
   input    wire                 i_rx_clk,
   input    wire                 i_got_time_code,
   input    wire    [7:0]        i_rx_time_code,
   output   wire    [5:0]        o_time_out,
-  output   wire    [1:0]        o_control_flags_out,
+  output   wire    [1:0]        o_control_flags_out, // reserved for future use
   output   wire                 o_tick_out
 );
 //------------------------------------------------------------------------------
@@ -33,9 +33,9 @@ assign o_tick_out           = tick_out;
 // The new time should be one more than the time-counter's previous
 // time-value.
 //==============================================================================
-always @(posedge i_clk or posedge i_reset)
+always @(posedge i_clk or negedge i_reset_n)
   begin : s_tick_out
-    if ( i_reset )
+    if ( !i_reset_n )
       begin
         rx_time_code                 <= {6{1'b0}};
         rx_time_code_plus1           <= 6'b000001;
@@ -71,7 +71,7 @@ space_wire_sync_one_pulse  inst0_time_code_pulse
 (
   .i_clk                   ( i_clk              ),
   .i_async_clk             ( i_rx_clk           ),
-  .i_reset                 ( i_reset            ),
+  .i_reset_n               ( i_reset_n          ),
   .i_async_in              ( i_got_time_code    ),
   .o_sync_out              ( got_time_code_sync )
 );

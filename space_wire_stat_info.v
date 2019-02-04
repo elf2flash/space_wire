@@ -4,7 +4,7 @@
 module space_wire_stat_info
 (
   input    wire                 i_clk,
-  input    wire                 i_reset,
+  input    wire                 i_reset_n,
   input    wire                 i_stat_clear,
   input    wire                 i_tx_clk,
   input    wire                 i_rx_clk,
@@ -14,9 +14,9 @@ module space_wire_stat_info
   input    wire                 i_tx_eep_async,
   input    wire                 i_tx_eop_async,
   input    wire                 i_tx_byte_async,
-  input    wire                 i_link_up_transition,
-  input    wire                 i_link_down_transition,
-  input    wire                 i_link_up_en,
+  input    wire                 i_stat_info_link_up_tx,
+  input    wire                 i_stat_info_link_down_tx,
+  input    wire                 i_stat_info_link_up_en,
   input    wire                 i_null_sync,
   input    wire                 i_fct_sync,
   output   wire    [7:0]        o_stat_info_0,
@@ -65,16 +65,16 @@ assign o_stat_info_7 = link_down_count;
 //==============================================================================
 //  One Shot Status Information.
 //==============================================================================
-always @(i_clk or i_reset)
+always @(i_clk or i_reset_n)
   begin : s_char_mon
-    if ( i_reset )
+    if ( !i_reset_n )
       begin
         char_mon    <= {7{1'b0}};
       end
     else
       begin
         char_mon    <= { rx_eep_sync, rx_eop_sync, i_fct_sync, i_null_sync, 
-                         rx_byte_sync, tx_byte_sync, i_link_up_en };
+                         rx_byte_sync, tx_byte_sync, i_stat_info_link_up_en };
       end
   end
 //------------------------------------------------------------------------------
@@ -95,9 +95,9 @@ always @(i_clk or i_reset)
 //==============================================================================
 //  Transmit EOP, EEP and 1Byte Increment Counter.
 //==============================================================================
-always @(posedge i_clk or posedge i_reset or posedge i_stat_clear)
+always @(posedge i_clk or negedge i_reset_n or posedge i_stat_clear)
   begin : s_tx_eep_eop_byte_count
-    if ( i_reset | i_stat_clear )
+    if ( !i_reset_n | i_stat_clear )
       begin
         tx_eop_count       <= {32{1'b0}};
         tx_eep_count       <= {32{1'b0}};
@@ -126,9 +126,9 @@ always @(posedge i_clk or posedge i_reset or posedge i_stat_clear)
 //==============================================================================
 //  receive EOP,EEP,1Byte Increment Counter.
 //==============================================================================
-always @(posedge i_clk or posedge i_reset or posedge i_stat_clear)
+always @(posedge i_clk or negedge i_reset_n or posedge i_stat_clear)
   begin : s_rx_eep_eop_byte_count
-    if ( i_reset | i_stat_clear )
+    if ( !i_reset_n | i_stat_clear )
       begin
         rx_eop_count       <= {32{1'b0}};
         rx_eep_count       <= {32{1'b0}};
@@ -157,20 +157,20 @@ always @(posedge i_clk or posedge i_reset or posedge i_stat_clear)
 //==============================================================================
 //  SpaceWireLinkUP and SpaceWireLinkDown Increment Counter.
 //==============================================================================
-always @(posedge i_clk or posedge i_reset or posedge i_stat_clear)
+always @(posedge i_clk or negedge i_reset_n or posedge i_stat_clear)
   begin : s_link_count
-    if ( i_reset | i_stat_clear )
+    if ( !i_reset_n | i_stat_clear )
       begin
         link_up_count        <= {32{1'b0}};
         link_down_count      <= {32{1'b0}};
       end
     else
       begin
-        if ( i_link_up_transition )
+        if ( i_stat_info_link_up_tx )
           begin
             link_up_count    <= link_up_count + 1'b1;
           end
-        if ( i_link_down_transition )
+        if ( i_stat_info_link_down_tx )
           begin
             link_down_count  <= link_down_count + 1'b1;
           end
@@ -185,7 +185,7 @@ space_wire_sync_one_pulse  inst0_receiveEEPPulse
 (
   .i_clk                   ( i_clk          ),
   .i_async_clk             ( i_rx_clk       ),
-  .i_reset                 ( i_reset        ),
+  .i_reset_n               ( i_reset_n      ),
   .i_async_in              ( i_rx_eep_async ),
   .o_sync_out              ( rx_eep_sync    )
 );
@@ -194,7 +194,7 @@ space_wire_sync_one_pulse  inst1_receiveEOPPulse
 (
   .i_clk                   ( i_clk          ),
   .i_async_clk             ( i_rx_clk       ),
-  .i_reset                 ( i_reset        ),
+  .i_reset_n               ( i_reset_n      ),
   .i_async_in              ( i_rx_eop_async ),
   .o_sync_out              ( rx_eop_sync    )
 );
@@ -203,7 +203,7 @@ space_wire_sync_one_pulse  inst2_receiveBytePulse
 (
   .i_clk                   ( i_clk           ),
   .i_async_clk             ( i_rx_clk        ),
-  .i_reset                 ( i_reset         ),
+  .i_reset_n               ( i_reset_n       ),
   .i_async_in              ( i_rx_byte_async ),
   .o_sync_out              ( rx_byte_sync    )
 );
@@ -212,7 +212,7 @@ space_wire_sync_one_pulse  inst3_transmitEEPPulse
 (
   .i_clk                   ( i_clk          ),
   .i_async_clk             ( i_tx_clk       ),
-  .i_reset                 ( i_reset        ),
+  .i_reset_n               ( i_reset_n      ),
   .i_async_in              ( i_tx_eep_async ),
   .o_sync_out              ( tx_eep_sync    )
 );
@@ -221,7 +221,7 @@ space_wire_sync_one_pulse  inst4_transmitEOPPulse
 (
   .i_clk                   ( i_clk          ),
   .i_async_clk             ( i_tx_clk       ),
-  .i_reset                 ( i_reset        ),
+  .i_reset_n               ( i_reset_n      ),
   .i_async_in              ( i_tx_eop_async ),
   .o_sync_out              ( tx_eop_sync    )
 );
@@ -230,7 +230,7 @@ space_wire_sync_one_pulse  inst5_transmitBytePulse
 (
   .i_clk                   ( i_clk           ),
   .i_async_clk             ( i_tx_clk        ),
-  .i_reset                 ( i_reset         ),
+  .i_reset_n               ( i_reset_n       ),
   .i_async_in              ( i_tx_byte_async ),
   .o_sync_out              ( tx_byte_sync    )
 );

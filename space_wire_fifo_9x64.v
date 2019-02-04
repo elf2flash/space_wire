@@ -16,7 +16,7 @@ module space_wire_fifo_9x64
   output   wire                 o_empty,
   output   wire                 o_full,
   //---
-  input    wire                 i_reset
+  input    wire                 i_reset_n
 );
 //------------------------------------------------------------------------------
 reg     [8:0]        dpram [0:63];
@@ -58,18 +58,18 @@ assign empty = wr_pointer4 == rd_pointer | rd_reset == 1'b1 ? 1'b1 : 1'b0;
 //---
 //---
 //==============================================================================
-// synchronized i_reset to i_wr_clk.
+// synchronized reset to i_wr_clk.
 //==============================================================================
-always @(posedge i_reset or posedge i_wr_clk)
+always @(negedge i_reset_n or posedge i_wr_clk)
   begin : s_sync_wr_reset
-  if ( i_reset )
+  if ( !i_reset_n )
     begin
       wr_reset_time  <= 2'b11;
       wr_reset       <= 1'b1;
     end
   else
     begin
-      wr_reset_time  <= { wr_reset_time[0], i_reset };
+      wr_reset_time  <= { wr_reset_time[0], !i_reset_n };
       wr_reset       <= wr_reset_time[1];
     end
   end
@@ -236,18 +236,18 @@ always @(posedge i_rd_clk)
 //---
 //---
 //==============================================================================
-// synchronized i_reset to i_rd_clk.
+// synchronized reset to i_rd_clk.
 //==============================================================================
-always @(posedge i_reset or posedge i_rd_clk)
+always @(negedge i_reset_n or posedge i_rd_clk)
   begin : s_sync_rd_reset
-    if ( i_reset )
+    if ( !i_reset_n )
       begin
         rd_reset_time  <= 2'b11;
         rd_reset       <= 1'b1;
       end
     else
       begin
-        rd_reset_time  <= { rd_reset_time[0], i_reset };
+        rd_reset_time  <= { rd_reset_time[0], !i_reset_n };
         rd_reset       <= rd_reset_time[1];
       end
   end

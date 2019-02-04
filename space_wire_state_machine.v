@@ -5,33 +5,40 @@ module space_wire_state_machine
 (
   input    wire        i_clk,
   input    wire        i_rx_clk,
-  input    wire        i_reset,
+  input    wire        i_reset_n,
+  // [i_clk]
   input    wire        i_after_12p8_us,
   input    wire        i_after_6p4_us,
-  input    wire        i_link_start,
-  input    wire        i_link_disable,
-  input    wire        i_auto_start,
+  // [unknown clk]
+  input    wire        i_link_start,      // z0z1 below
+  input    wire        i_link_disable,    // z0z1 below
+  input    wire        i_auto_start,      // z0z1 below
+  // [i_clk]
   output   wire        o_tx_en,
   output   wire        o_send_nulls,
   output   wire        o_send_fcts,
   output   wire        o_send_n_character,
   output   wire        o_send_time_codes,
-  input    wire        i_got_fct,
-  input    wire        i_got_time_code,
-  input    wire        i_got_n_character,
-  input    wire        i_got_null,
-  input    wire        i_got_bit,
-  input    wire        i_credit_error,
-  input    wire        i_rx_error,
+  // [i_rx_clk]
+  input    wire        i_got_fct,         // sync below
+  input    wire        i_got_time_code,   // sync below
+  input    wire        i_got_n_character, // sync below
+  input    wire        i_got_null,        // sync below
+  input    wire        i_rx_error,        // sync below
+  // [i_tx_clk]
+  input    wire        i_credit_error,    // like async reset
+  // [i_clk]
   output   wire        o_rx_en,
   output   wire        o_char_sequence_error,
-  output   wire        o_space_wire_reset_out,
-  input    wire        i_fifo_available,
+  output   wire        o_space_wire_reset_n_out,
+  // [unknown clk]
+  input    wire        i_fifo_available,  // z0z1 below
+  // [i_clk]
   output   wire        o_timer_6p4_us_reset,
   output   wire        o_timer_12p8_us_start,
-  output   wire        o_link_up_transition_sync,
-  output   wire        o_link_down_transition_sync,
-  output   wire        o_link_up_en,
+  output   wire        o_stat_info_link_up_tx,
+  output   wire        o_stat_info_link_down_tx,
+  output   wire        o_stat_info_link_up_en,
   output   wire        o_null_sync,
   output   wire        o_fct_sync
 );
@@ -46,11 +53,11 @@ localparam SLSM_RUN          = 5;
 //------------------------------------------------------------------------------
 reg     [2:0] link_state;
 wire    got_null_sync;
+reg     got_null_sync_reg;
 wire    got_fct_sync;
 wire    got_time_code_sync;
 wire    got_n_char_sync;
-wire    async_error;
-wire    rx_errors_sync;
+wire    rx_error_sync;
 reg     char_sequence_error;
 reg     tx_en;
 reg     send_nulls;
@@ -58,22 +65,27 @@ reg     send_fcts;
 reg     send_n_char;
 reg     send_time_code;
 reg     rx_en;
-reg     space_wire_reset_out;
+reg     space_wire_reset_n_out;
 reg     timer_6p4_us_reset;
-reg     timer_12p8_us_reset;
+reg     timer_12p8_us_start;
+reg     link_start_z0;
+reg     link_start_z1;
+reg     link_disable_z0;
+reg     link_disable_z1;
+reg     auto_start_z0;
+reg     auto_start_z1;
+reg     fifo_available_z0;
+reg     fifo_available_z1;
 //------------------------------------------------------------------------------
-reg     link_up_transition;
-reg     link_down_transition;
-reg     link_up_en;
-wire    credit_sync;
-//------------------------------------------------------------------------------
-assign async_error    = rx_errors_sync;
+reg     stat_info_link_up_tx;
+reg     stat_info_link_down_tx;
+reg     stat_info_link_up_en;
 //------------------------------------------------------------------------------
 space_wire_sync_one_pulse  inst0_gotNullPulse
 (
   .i_clk                   ( i_clk         ),
   .i_async_clk             ( i_rx_clk      ),
-  .i_reset                 ( i_reset       ),
+  .i_reset_n               ( i_reset_n     ),
   .i_async_in              ( i_got_null    ),
   .o_sync_out              ( got_null_sync )
 );
@@ -82,7 +94,7 @@ space_wire_sync_one_pulse  inst1_gotFCTPulse
 (
   .i_clk                   ( i_clk        ),
   .i_async_clk             ( i_rx_clk     ),
-  .i_reset                 ( i_reset      ),
+  .i_reset_n               ( i_reset_n    ),
   .i_async_in              ( i_got_fct    ),
   .o_sync_out              ( got_fct_sync )
 );
@@ -91,7 +103,7 @@ space_wire_sync_one_pulse  inst2_gotTimeCodePulse
 (
   .i_clk                   ( i_clk              ),
   .i_async_clk             ( i_rx_clk           ),
-  .i_reset                 ( i_reset            ),
+  .i_reset_n               ( i_reset_n          ),
   .i_async_in              ( i_got_time_code    ),
   .o_sync_out              ( got_time_code_sync )
 );
@@ -100,7 +112,7 @@ space_wire_sync_one_pulse  inst3_gotNCharacterPulse
 (
   .i_clk                   ( i_clk             ),
   .i_async_clk             ( i_rx_clk          ),
-  .i_reset                 ( i_reset           ),
+  .i_reset_n               ( i_reset_n         ),
   .i_async_in              ( i_got_n_character ),
   .o_sync_out              ( got_n_char_sync   )
 );
@@ -109,41 +121,51 @@ space_wire_sync_one_pulse  inst4_errorPulse
 (
   .i_clk                   ( i_clk          ),
   .i_async_clk             ( i_rx_clk       ),
-  .i_reset                 ( i_reset        ),
+  .i_reset_n               ( i_reset_n      ),
   .i_async_in              ( i_rx_error     ),
-  .o_sync_out              ( rx_errors_sync )
+  .o_sync_out              ( rx_error_sync  )
 );
 //------------------------------------------------------------------------------
-assign o_char_sequence_error           = char_sequence_error;
+assign o_char_sequence_error           = char_sequence_error;  // Out IP-core
 assign o_tx_en                         = tx_en;
 assign o_send_nulls                    = send_nulls;
 assign o_send_fcts                     = send_fcts;
 assign o_send_n_character              = send_n_char;
 assign o_send_time_codes               = send_time_code;
 assign o_rx_en                         = rx_en;
-assign o_space_wire_reset_out          = space_wire_reset_out;
+assign o_space_wire_reset_n_out        = space_wire_reset_n_out;
 assign o_timer_6p4_us_reset            = timer_6p4_us_reset;
-assign o_timer_12p8_us_start           = timer_12p8_us_reset;
-assign o_link_up_transition_sync       = link_up_transition;
-assign o_link_down_transition_sync     = link_down_transition;
-assign o_link_up_en                    = link_up_en;
+assign o_timer_12p8_us_start           = timer_12p8_us_start;
+assign o_stat_info_link_up_tx          = stat_info_link_up_tx;
+assign o_stat_info_link_down_tx        = stat_info_link_down_tx;
+assign o_stat_info_link_up_en          = stat_info_link_up_en;
 assign o_null_sync                     = got_null_sync;
 assign o_fct_sync                      = got_fct_sync;
 //------------------------------------------------------------------------------
-//---
-//---
-//---
+// Transfer input signal to another clock domain
+//------------------------------------------------------------------------------
+always @(posedge i_clk)
+  begin : s_transfer_input_to_clk
+    link_start_z0                     <= i_link_start;
+    link_start_z1                     <= link_start_z0;
+    link_disable_z0                   <= i_link_disable;
+    link_disable_z1                   <= link_disable_z0;
+    auto_start_z0                     <= i_auto_start;
+    auto_start_z1                     <= auto_start_z0;
+    fifo_available_z0                 <= i_fifo_available;
+    fifo_available_z1                 <= fifo_available_z0;
+  end
 //==============================================================================
 // ECSS-E-ST-50-12C 8.4.6   StateMachine.
 // ECSS-E-ST-50-12C 8.5.3.7 RxErr.
 // ECSS-E-ST-50-12C 8.5.3.8 CreditError.
 //==============================================================================
-always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
+always @(posedge i_clk or negedge i_reset_n or posedge i_credit_error)
   begin : s_link_state
-    if ( i_reset | i_credit_error )
+    if ( !i_reset_n | i_credit_error )
       begin
         link_state                     <= SLSM_ERROR_RESET;
-        space_wire_reset_out           <= 1'b1;
+        space_wire_reset_n_out         <= 1'b0;
         rx_en                          <= 1'b0;
         tx_en                          <= 1'b0;
         send_nulls                     <= 1'b0;
@@ -152,37 +174,38 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
         send_time_code                 <= 1'b0;
         char_sequence_error            <= 1'b0;
         timer_6p4_us_reset             <= 1'b1;
-        timer_12p8_us_reset            <= 1'b0;
-        link_down_transition           <= 1'b0;
-        link_up_transition             <= 1'b0;
-        link_up_en                     <= 1'b0;
+        timer_12p8_us_start            <= 1'b0;
+        stat_info_link_down_tx         <= 1'b0;
+        stat_info_link_up_tx           <= 1'b0;
+        stat_info_link_up_en           <= 1'b0;
       end
     else
       begin
         case (link_state)
         //======================================================================
         // ECSS-E-ST-50-12C 8.5.2.2 ErrorReset.
-        // When the i_reset signal is de-asserted the ErrorReset state shall be 
+        // When the reset signal is de-asserted the ErrorReset state shall be 
         // left unconditionally after a delay of 6,4 us (nominal) and the state
         // machine shall move to the ErrorWait state.
         //======================================================================
-        SLSM_ERROR_RESET:
+        SLSM_ERROR_RESET:   // #0
           begin
-            link_up_en                 <= 1'b0;
-           
+            stat_info_link_up_en       <= 1'b0;
+            got_null_sync_reg          <= 1'b0;
             if ( send_time_code )
               begin
-                link_down_transition   <= 1'b1;
+                stat_info_link_down_tx <= 1'b1;
               end
             else
               begin
-                link_down_transition   <= 1'b0;
+                stat_info_link_down_tx <= 1'b0;
               end
-            if ( i_fifo_available )
+            if ( fifo_available_z1 )
               begin
-                timer_6p4_us_reset     <= 1'b0;
+                //timer_6p4_us_reset     <= 1'b0;   //???????
               end
-            space_wire_reset_out       <= 1'b1;
+            timer_6p4_us_reset         <= 1'b0;
+            space_wire_reset_n_out     <= 1'b0;
             rx_en                      <= 1'b0;
             tx_en                      <= 1'b0;
             send_nulls                 <= 1'b0;
@@ -190,13 +213,13 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
             send_n_char                <= 1'b0;
             send_time_code             <= 1'b0;
             char_sequence_error        <= 1'b0;
-            if ( rx_errors_sync )
+            if ( rx_error_sync )
               begin
                 link_state             <= SLSM_ERROR_RESET;
               end
             else if ( i_after_6p4_us )
               begin
-                timer_12p8_us_reset    <= 1'b1;
+                timer_12p8_us_start    <= 1'b1;
                 link_state             <= SLSM_ERROR_WAIT;
               end
           end
@@ -209,17 +232,28 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
         // detected the state machine shall move back 
         // to the ErrorReset state.
         //======================================================================
-        SLSM_ERROR_WAIT:
+        SLSM_ERROR_WAIT:   // #1
           begin
-            space_wire_reset_out       <= 1'b0;
-            timer_12p8_us_reset        <= 1'b0;
+            space_wire_reset_n_out     <= 1'b1;
+            timer_12p8_us_start        <= 1'b0;
             rx_en                      <= 1'b1;
-            if ( rx_errors_sync )
+            tx_en                      <= 1'b0;
+            // ECSS-E-ST-50-12C 8.5.2.3 ErrorWait
+            // If a NULL is received then the gotNULL condition shall be set.
+            // ECSS-E-ST-50-12C 8.5.2.5 Started
+            // The NULL that set the gotNULL condition can
+            // have been received in the ErrorWait, Ready or
+            // Started states
+            if ( got_null_sync )
+              begin
+                got_null_sync_reg      <= 1'b1;
+              end
+            if ( rx_error_sync )
               begin
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
               end
-            else if ( got_time_code_sync | got_fct_sync | got_n_char_sync )
+            else if ( got_fct_sync | got_n_char_sync | got_time_code_sync)
               begin
                 char_sequence_error    <= 1'b1;
                 timer_6p4_us_reset     <= 1'b1;
@@ -240,10 +274,21 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
         // error occurs, or any character other than a NULL is received, 
         // then the state machine shall move to the ErrorReset state.
         //======================================================================
-        SLSM_READY:
+        SLSM_READY:   // #2
           begin
-            rx_en <= 1'b1;
-            if ( rx_errors_sync )
+            rx_en                      <= 1'b1;
+            tx_en                      <= 1'b0;
+            // ECSS-E-ST-50-12C 8.5.2.4 Ready
+            // If a NULL is received then the gotNULL condition shall be set.
+            // ECSS-E-ST-50-12C 8.5.2.5 Started
+            // The NULL that set the gotNULL condition can
+            // have been received in the ErrorWait, Ready or
+            // Started states
+            if ( got_null_sync )
+              begin
+                got_null_sync_reg      <= 1'b1;
+              end
+            if ( rx_error_sync )
               begin
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
@@ -254,14 +299,16 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
               end
-            else if ( i_auto_start & got_null_sync )
+            else if ( auto_start_z1 & got_null_sync_reg )
               begin
-                timer_12p8_us_reset    <= 1'b1;
+                // start 12,8 μs timeout timer
+                timer_12p8_us_start    <= 1'b1;
                 link_state             <= SLSM_STARTED;
               end
-            else if ( i_link_start )
+            else if ( link_start_z1 )
               begin
-                timer_12p8_us_reset    <= 1'b1;
+                // start 12,8 μs timeout timer
+                timer_12p8_us_start    <= 1'b1;
                 link_state             <= SLSM_STARTED;
               end
           end
@@ -274,18 +321,18 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
         // error occurs, or any character other than a NULL is received, then 
         // the state machine shall move to the ErrorReset state.
         //======================================================================
-        SLSM_STARTED:
+        SLSM_STARTED:   // #3
           begin
             tx_en                      <= 1'b1;
             rx_en                      <= 1'b1;
             send_nulls                 <= 1'b1;
-            timer_12p8_us_reset        <= 1'b0;
-            if ( rx_errors_sync )
+            timer_12p8_us_start        <= 1'b0;
+            if ( rx_error_sync )
               begin
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
               end
-            else if ( i_link_disable )
+            else if ( link_disable_z1 )
               begin
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
@@ -301,9 +348,10 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
               end
-            else if ( got_null_sync )
+            else if ( got_null_sync | got_null_sync_reg )
               begin
-                timer_12p8_us_reset    <= 1'b1;
+                // start 12,8 μs timeout timer
+                timer_12p8_us_start    <= 1'b1;
                 link_state             <= SLSM_CONNECTING;
               end
           end
@@ -316,18 +364,19 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
         // FCT is received, then the state machine shall move to the ErrorReset 
         // state.
         //======================================================================
-        SLSM_CONNECTING:
+        SLSM_CONNECTING:   // #4
           begin
-            timer_12p8_us_reset        <= 1'b0;
+            timer_12p8_us_start        <= 1'b0;
             tx_en                      <= 1'b1;
             rx_en                      <= 1'b1;
             send_fcts                  <= 1'b1;
-            if ( rx_errors_sync )
+            send_nulls                 <= 1'b1;
+            if ( rx_error_sync )
               begin
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
               end
-            else if ( i_link_disable )
+            else if ( link_disable_z1 )
               begin
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
@@ -337,7 +386,7 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;
               end
-            else if ( got_n_char_sync )
+            else if ( got_n_char_sync | got_time_code_sync)
               begin
                 char_sequence_error    <= 1'b1;
                 timer_6p4_us_reset     <= 1'b1;
@@ -355,22 +404,24 @@ always @(posedge i_clk or posedge i_reset or posedge i_credit_error)
         // If  a disconnection error, parity error, ESC error occur, then the 
         // state machine shall move to the ErrorResetState.
         //======================================================================
-        SLSM_RUN:
+        SLSM_RUN:   // #5
           begin
             tx_en                      <= 1'b1;
             rx_en                      <= 1'b1;
+            send_fcts                  <= 1'b1;
+            send_nulls                 <= 1'b1;
             send_n_char                <= 1'b1;
             send_time_code             <= 1'b1;
-            link_up_en                 <= 1'b1;
+            stat_info_link_up_en       <= 1'b1;
             if ( !send_time_code )
               begin
-                link_up_transition     <= 1'b1;
+                stat_info_link_up_tx   <= 1'b1;
               end
             else
               begin
-                link_up_transition     <= 1'b0;
+                stat_info_link_up_tx   <= 1'b0;
               end
-            if ( i_link_disable | rx_errors_sync )
+            if ( link_disable_z1 | rx_error_sync )
               begin
                 timer_6p4_us_reset     <= 1'b1;
                 link_state             <= SLSM_ERROR_RESET;

@@ -9,29 +9,36 @@ module space_wire_tx
   input    wire                 i_tx_clk,
   input    wire                 i_clk,
   input    wire                 i_rx_clk,
-  input    wire                 i_reset,
+  input    wire                 i_reset_n,
+  //
   output   wire                 o_space_wire_data_out,
   output   wire                 o_space_wire_strobe_out,
+  //
   input    wire                 i_tick_in,
   input    wire    [5:0]        i_time_in,
-  input    wire    [1:0]        i_control_flags_in,
+  //
+  input    wire    [1:0]        i_control_flags_in,  // reserved for future use
+  // i_clk
   input    wire                 i_tx_data_en,
   input    wire    [7:0]        i_tx_data,
   input    wire                 i_tx_data_control_flag,
   output   wire                 o_tx_ready,
+  //
   input    wire                 i_tx_en,
+  //
   input    wire                 i_send_nulls,
   input    wire                 i_send_fcts,
   input    wire                 i_send_n_char,
   input    wire                 i_send_time_codes,
+  //
   input    wire                 i_got_fct,
   input    wire                 i_got_n_char,
-  input    wire    [5:0]        i_rx_fifo_count,
+  input    wire    [5:0]        i_rx_fifo_rdusdw,
   output   wire                 o_credit_error,
   input    wire    [5:0]        i_tx_clk_divide,
   output   wire    [5:0]        o_credit_count_out,
   output   wire    [5:0]        o_outstanding_count_out,
-  input    wire                 i_space_wire_reset,
+  input    wire                 i_space_wire_reset_n,
   output   wire                 o_tx_eep_async,
   output   wire                 o_tx_eop_async,
   output   wire                 o_tx_byte_async
@@ -66,9 +73,9 @@ reg                  tx_time_code_state;
 wire                 got_n_char_sync;
 reg     [9:0]        got_n_char_sync_delay;
 reg     [5:0]        outstanding_count;
-reg     [5:0]        rx_fifo_count_buffer0;
-reg     [5:0]        rx_fifo_count_buffer1;
-reg     [5:0]        rx_fifo_count_buffer;
+reg     [5:0]        rx_fifo_rdusdw_r0;
+reg     [5:0]        rx_fifo_rdusdw_r1;
+reg     [5:0]        rx_fifo_rdusdw_r;
 reg                  tx_fct_state;
 reg     [7:0]        tx_data_buffer;
 reg                  tx_data_control_flag_buffer;
@@ -80,7 +87,7 @@ wire                 tx_ready;
 wire                 credit_error;
 reg     [5:0]        time_in_buffer;
 reg                  first_null_send;
-wire                 reset_in;
+wire                 reset_n_in;
 reg     [5:0]        clk_divide_reg;
 reg                  tx_eep_async;
 reg                  tx_eop_async;
@@ -92,7 +99,7 @@ initial
     time_in_buffer = 6'b000000;
   end
 //------------------------------------------------------------------------------
-assign reset_in         = i_reset | i_space_wire_reset;
+assign reset_n_in       = i_reset_n & i_space_wire_reset_n;
 assign o_tx_eep_async   = tx_eep_async;
 assign o_tx_eop_async   = tx_eop_async;
 assign o_tx_byte_async  = tx_byte_async;
@@ -101,7 +108,7 @@ space_wire_sync_one_pulse   inst0_transmitDataEnablePulse
 (
   .i_clk                    ( i_tx_clk        ),
   .i_async_clk              ( i_clk           ),
-  .i_reset                  ( reset_in        ),
+  .i_reset_n                ( reset_n_in      ),
   .i_async_in               ( i_tx_data_en    ),
   .o_sync_out               ( tx_data_en_sync )
 );
@@ -110,7 +117,7 @@ space_wire_sync_one_pulse   inst1_tickInPulse
 (
   .i_clk                    ( i_tx_clk        ),
   .i_async_clk              ( i_clk           ),
-  .i_reset                  ( reset_in        ),
+  .i_reset_n                ( reset_n_in      ),
   .i_async_in               ( i_tick_in       ),
   .o_sync_out               ( tick_in_sync    )
 );
@@ -119,7 +126,7 @@ space_wire_sync_one_pulse   inst2_gotFCTPulse
 (
   .i_clk                    ( i_tx_clk        ),
   .i_async_clk              ( i_rx_clk        ),
-  .i_reset                  ( reset_in        ),
+  .i_reset_n                ( reset_n_in      ),
   .i_async_in               ( i_got_fct       ),
   .o_sync_out               ( got_fct_sync    )
 );
@@ -128,7 +135,7 @@ space_wire_sync_one_pulse   inst3_gotNCharacterPulse
 (
   .i_clk                    ( i_tx_clk        ),
   .i_async_clk              ( i_rx_clk        ),
-  .i_reset                  ( reset_in        ),
+  .i_reset_n                ( reset_n_in      ),
   .i_async_in               ( i_got_n_char    ),
   .o_sync_out               ( got_n_char_sync )
 );
@@ -156,9 +163,9 @@ assign o_space_wire_strobe_out  = strobe_out_reg;
 //==============================================================================
 // Statistical information, Transmit One Shot Pulse(EOP,EEP,1Byte).
 //==============================================================================
-always @(posedge i_tx_clk or posedge reset_in)
+always @(posedge i_tx_clk or negedge reset_n_in)
   begin : s_tx_eop_eep_byte
-    if ( reset_in )
+    if ( !reset_n_in )
       begin
         tx_eep_async                <= 1'b0;
         tx_eop_async                <= 1'b0;
@@ -206,9 +213,9 @@ always @(posedge i_tx_clk or posedge reset_in)
 // control code. The value of the Time-Code is the value of the TIME_IN and 
 // CONTROL-FLAGS_IN signals at the point in time when TICK_IN is asserted.
 //==============================================================================
-always @(posedge i_tx_clk or posedge reset_in)
+always @(posedge i_tx_clk or negedge reset_n_in)
   begin : s_tx_time_code_state
-    if ( reset_in )
+    if ( !reset_n_in )
       begin
         tx_time_code_state              <= 1'b0;
         tx_time_code_start              <= 1'b0;
@@ -248,9 +255,9 @@ always @(posedge i_tx_clk or posedge reset_in)
 // Whenever the transmitter sends an N-Char it decrements the credit count 
 // by one.
 //==============================================================================
-always @(posedge i_tx_clk or posedge reset_in)
+always @(posedge i_tx_clk or negedge reset_n_in)
   begin : s_tx_credit_count
-    if ( reset_in )
+    if ( !reset_n_in )
       begin
         tx_credit_count           <= {7{1'b0}};
       end
@@ -286,9 +293,9 @@ always @(posedge i_tx_clk or posedge reset_in)
 // value (i.e. within eight of the maximum value), the credit count is
 // not incremented and a credit error occurs.
 //==============================================================================
-always @(posedge i_tx_clk or posedge reset_in)
+always @(posedge i_tx_clk or negedge reset_n_in)
   begin : s_credit_over_flow
-    if ( reset_in )
+    if ( !reset_n_in )
       begin
         credit_over_flow        <= 1'b0;
       end
@@ -310,7 +317,7 @@ always @(posedge i_tx_clk or posedge reset_in)
 //==============================================================================
 always @(posedge i_tx_clk)
   begin : s_credit_error_fct_over_flow
-    if ( reset_in )
+    if ( !reset_n_in )
       begin
         credit_error_fct_over_flow    <= 1'b0;
       end
@@ -326,11 +333,11 @@ always @(posedge i_tx_clk)
 //---
 //==============================================================================
 // Receive Wait time for subtraction OutstandingCount
-// after adding i_rx_fifo_count.
+// after adding i_rx_fifo_rdusdw.
 //==============================================================================
-always @(posedge i_tx_clk or posedge reset_in)
+always @(posedge i_tx_clk or negedge reset_n_in)
   begin : s_got_n_char_sync_delay
-    if ( reset_in )
+    if ( !reset_n_in )
       begin
         got_n_char_sync_delay         <= {10{1'b0}};
       end
@@ -347,21 +354,21 @@ always @(posedge i_tx_clk or posedge reset_in)
 //==============================================================================
 // Synchronized input signal to i_tx_clk. 
 //==============================================================================
-always @(posedge i_tx_clk or posedge reset_in)
-  begin : s_rx_fifo_count_buffer
-    if ( reset_in )
+always @(posedge i_tx_clk or negedge reset_n_in)
+  begin : s_rx_fifo_rdusdw_r
+    if ( !reset_n_in )
       begin
-        rx_fifo_count_buffer0       <= {6{1'b0}};
-        rx_fifo_count_buffer1       <= {6{1'b0}};
-        rx_fifo_count_buffer        <= {6{1'b0}};
+        rx_fifo_rdusdw_r0            <= {6{1'b0}};
+        rx_fifo_rdusdw_r1            <= {6{1'b0}};
+        rx_fifo_rdusdw_r             <= {6{1'b0}};
       end
     else
       begin
-        rx_fifo_count_buffer0       <= i_rx_fifo_count;
-        rx_fifo_count_buffer1       <= rx_fifo_count_buffer0;
-        if ( rx_fifo_count_buffer1 == rx_fifo_count_buffer0 )
+        rx_fifo_rdusdw_r0            <= i_rx_fifo_rdusdw;
+        rx_fifo_rdusdw_r1            <= rx_fifo_rdusdw_r0;
+        if ( rx_fifo_rdusdw_r1 == rx_fifo_rdusdw_r0 )
           begin
-            rx_fifo_count_buffer    <= rx_fifo_count_buffer1;
+            rx_fifo_rdusdw_r         <= rx_fifo_rdusdw_r1;
           end
       end
   end
@@ -376,9 +383,9 @@ always @(posedge i_tx_clk or posedge reset_in)
 // Whenever the transmitter sends an N-Char it decrements the credit
 // count by one.
 //==============================================================================
-always @(posedge i_tx_clk or posedge reset_in)
+always @(posedge i_tx_clk or negedge reset_n_in)
   begin : s_tx_fct_state
-    if ( reset_in )
+    if ( !reset_n_in )
       begin
         outstanding_count                   <= 6'b000000;
         tx_fct_state                        <= 1'b0;
@@ -389,7 +396,7 @@ always @(posedge i_tx_clk or posedge reset_in)
       begin
         if ( !tx_fct_state )
            begin
-           if ( outstanding_count + rx_fifo_count_buffer <= 6'b110000 & 
+           if ( outstanding_count + rx_fifo_rdusdw_r <= 6'b110000 & 
                 i_send_fcts )
               begin
                 tx_fct_start                <= 1'b1;
@@ -446,9 +453,9 @@ always @(posedge i_tx_clk or posedge reset_in)
 // Instract to start Transmit and load data to buffer after read the data from 
 // TransmitFIFO.
 //==============================================================================
-always @(posedge i_tx_clk or posedge reset_in)
+always @(posedge i_tx_clk or negedge reset_n_in)
   begin : s_send_start
-    if ( reset_in )
+    if ( !reset_n_in )
       begin
         send_start                      <= 1'b0;
         tx_data_buffer                  <= {8{1'b0}};
@@ -477,9 +484,9 @@ always @(posedge i_tx_clk or posedge reset_in)
 // After a reset the SpaceWire link transmitter shall initially commence 
 // operating at a data signalling rate of (10±1) Mb/s.
 //==============================================================================
-always @(posedge i_tx_clk or posedge i_reset)
+always @(posedge i_tx_clk or negedge i_reset_n)
   begin : s_clk_divide_reg
-    if ( i_reset )
+    if ( !i_reset_n )
       begin
         clk_divide_reg        <= C_TX_CLK_DIVIDE_VAL;
       end
@@ -503,9 +510,9 @@ always @(posedge i_tx_clk or posedge i_reset)
 // ECSS-E-ST-50-12C 8.4.3 Transmit i_clk
 // Dividing counter to determine the Transmit signalling rate.
 //==============================================================================
-always @(posedge i_tx_clk or posedge i_reset)
+always @(posedge i_tx_clk or negedge i_reset_n)
   begin : s_divide_state
-    if ( i_reset )
+    if ( !i_reset_n )
       begin
         divide_count      <= {6{1'b0}};
         divide_state      <= 1'b0;
@@ -534,9 +541,9 @@ always @(posedge i_tx_clk or posedge i_reset)
 // DS signal. 
 // Generate odd parity and Transmit Null data automatically.
 //==============================================================================
-always @(posedge i_tx_clk or posedge i_reset)
+always @(posedge i_tx_clk or negedge i_reset_n)
   begin : process_12
-    if ( i_reset )
+    if ( !i_reset_n )
       begin
         tx_parity         <= 1'b0;
         state_tx          <= SM_STOP;
